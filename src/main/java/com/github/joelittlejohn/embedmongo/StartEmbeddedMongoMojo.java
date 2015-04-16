@@ -21,20 +21,15 @@ import de.flapdoodle.embed.mongo.Command;
 import de.flapdoodle.embed.mongo.MongodExecutable;
 import de.flapdoodle.embed.mongo.MongodProcess;
 import de.flapdoodle.embed.mongo.MongodStarter;
-import de.flapdoodle.embed.mongo.config.AbstractMongoConfig.Net;
-import de.flapdoodle.embed.mongo.config.AbstractMongoConfig.Storage;
-import de.flapdoodle.embed.mongo.config.AbstractMongoConfig.Timeout;
-import de.flapdoodle.embed.mongo.config.ArtifactStoreBuilder;
-import de.flapdoodle.embed.mongo.config.DownloadConfigBuilder;
-import de.flapdoodle.embed.mongo.config.MongodConfig;
-import de.flapdoodle.embed.mongo.config.RuntimeConfigBuilder;
+import de.flapdoodle.embed.mongo.config.*;
+import de.flapdoodle.embed.mongo.distribution.IFeatureAwareVersion;
 import de.flapdoodle.embed.mongo.distribution.Version;
+import de.flapdoodle.embed.mongo.distribution.Versions;
 import de.flapdoodle.embed.process.config.IRuntimeConfig;
 import de.flapdoodle.embed.process.config.io.ProcessOutput;
 import de.flapdoodle.embed.process.config.store.IDownloadConfig;
 import de.flapdoodle.embed.process.distribution.Distribution;
 import de.flapdoodle.embed.process.distribution.GenericVersion;
-import de.flapdoodle.embed.process.distribution.IVersion;
 import de.flapdoodle.embed.process.exceptions.DistributionException;
 import de.flapdoodle.embed.process.runtime.ICommandLinePostProcessor;
 import de.flapdoodle.embed.process.runtime.Network;
@@ -59,7 +54,7 @@ import static java.util.Collections.singletonList;
  * @goal start
  * @phase pre-integration-test
  * @see <a
- *      href="http://github.com/flapdoodle-oss/embedmongo.flapdoodle.de">http://github.com/flapdoodle-oss/embedmongo.flapdoodle.de</a>
+ * href="http://github.com/flapdoodle-oss/embedmongo.flapdoodle.de">http://github.com/flapdoodle-oss/embedmongo.flapdoodle.de</a>
  */
 public class StartEmbeddedMongoMojo extends AbstractMojo {
 
@@ -215,11 +210,21 @@ public class StartEmbeddedMongoMojo extends AbstractMojo {
                             final Distribution distribution, final List<String> args) {
                         args.remove("--noauth");
                         args.add("--auth");
+                        args.remove("--nojournal");
+                        args.add("--journal");
                         return args;
                     }
                 };
             } else {
-                commandLinePostProcessor = new ICommandLinePostProcessor.Noop();
+                commandLinePostProcessor = new ICommandLinePostProcessor() {
+                    @Override
+                    public List<String> process(
+                            final Distribution distribution, final List<String> args) {
+                        args.remove("--nojournal");
+                        args.add("--journal");
+                        return args;
+                    }
+                };
             }
 
             IRuntimeConfig runtimeConfig = new RuntimeConfigBuilder()
@@ -234,16 +239,19 @@ public class StartEmbeddedMongoMojo extends AbstractMojo {
             }
             savePortToProjectProperties();
 
-            MongodConfig mongoConfig = new MongodConfig(getVersion(),
-                    new Net(bindIp, port, Network.localhostIsIPv6()),
-                    new Storage(getDataDirectory(), null, 0),
-                    new Timeout());
+            final MongodConfigBuilder builder = new MongodConfigBuilder()
+                    .version(getVersion())
+                    .net(new Net(bindIp, port, Network.localhostIsIPv6()))
+                    .replication(new Storage(getDataDirectory(), null, 0))
+                    .timeout(new Timeout());
 
-            executable = MongodStarter.getInstance(runtimeConfig).prepare(mongoConfig);
+            executable = MongodStarter.getInstance(runtimeConfig).prepare(builder.build());
         } catch (UnknownHostException e) {
             throw new MojoExecutionException("Unable to determine if localhost is ipv6", e);
         } catch (DistributionException e) {
             throw new MojoExecutionException("Failed to download MongoDB distribution: " + e.withDistribution(), e);
+        } catch (IOException e) {
+            throw new MojoExecutionException("IOException", e);
         }
 
         try {
@@ -332,7 +340,7 @@ public class StartEmbeddedMongoMojo extends AbstractMojo {
         });
     }
 
-    private IVersion getVersion() {
+    private IFeatureAwareVersion getVersion() {
         String versionEnumName = this.version.toUpperCase().replaceAll("\\.", "_");
 
         if (versionEnumName.charAt(0) != 'V') {
@@ -343,7 +351,7 @@ public class StartEmbeddedMongoMojo extends AbstractMojo {
             return Version.valueOf(versionEnumName);
         } catch (IllegalArgumentException e) {
             getLog().warn("Unrecognised MongoDB version '" + this.version + "', this might be a new version that we don't yet know about. Attemping download anyway...");
-            return new GenericVersion(this.version);
+            return Versions.withFeatures(new GenericVersion(this.version));
         }
 
     }

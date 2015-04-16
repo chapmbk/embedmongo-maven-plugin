@@ -10,7 +10,7 @@
   
     <groupId>com.github.joelittlejohn.embedmongo</groupId>
     <artifactId>embedmongo-maven-plugin</artifactId>
-    <version>0.1.10-SNAPSHOT</version>
+    <version>0.1.10-JOURNAL</version>
 
     <packaging>maven-plugin</packaging>
 
@@ -105,7 +105,7 @@
         <dependency>
             <groupId>de.flapdoodle.embed</groupId>
             <artifactId>de.flapdoodle.embed.mongo</artifactId>
-            <version>1.31</version>
+            <version>1.47.2</version>
         </dependency>
         <dependency>
             <groupId>junit</groupId>
